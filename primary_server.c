@@ -58,7 +58,7 @@ void *writeToGraphDB(void *arg)
         temp[1] = args->filename[2];
         index = atoi(temp);
     }
-
+    printf("intdex : %d \n",index);
     sem_wait(semaphore_write[index]);
 
     /*open for reading and writing.
@@ -85,7 +85,7 @@ void *writeToGraphDB(void *arg)
         return NULL;
     }
 
-    int shmid = -1;
+    int shmid;
     int *shmptr;
     int temp = 100000;
     shmid = shmget(shmkey, sizeof(int[MAX_GRAPH_NODES + 1][MAX_GRAPH_NODES + 1]), PERMS);
@@ -110,7 +110,7 @@ void *writeToGraphDB(void *arg)
         return NULL;
     }
     int nodes = shmptr[0];
-    while(nodes==0){
+    while(nodes<1 || nodes>30){
         nodes = shmptr[0];
     }
     int adj[nodes][nodes];
@@ -165,7 +165,6 @@ int main(int argc, char const *argv[])
 {
     struct message buf;
 
-    char sem_name[20];
     if ((key = ftok("load_balancer.c", 'W')) == -1)
     {
         perror("ftok");
@@ -179,9 +178,10 @@ int main(int argc, char const *argv[])
         exit(1);
     }
 
+    char sem_name[50];
     for (int i = 0; i < 20; i++)
     {
-        sprintf(sem_name, "mutex_%d", i);
+        sprintf(sem_name, "__writerSemaphore__%d__", i);
         semaphore_write[i] = sem_open(sem_name, O_CREAT, PERMS, 1); // 0x0100 means create if doesnt exist already
     }
 

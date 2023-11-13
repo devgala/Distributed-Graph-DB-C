@@ -254,17 +254,70 @@ int main(int argc, char const *argv[])
         {
             // DFS
 
+            
+
+            key_t shmkey;
+            if ((shmkey = ftok("client.c", sequence_number)) == -1)
+            {
+                perror("SHM Key could not be created\n");
+                continue;
+            }
+
+            int shmid;
+            int *shmptr;
+            shmid = shmget(shmkey, sizeof(int), IPC_CREAT | PERMS);
+            if (shmid == -1)
+            {
+                perror("Error occured in creating SHM segment");
+                continue;
+            }
+
+            shmptr = (int *)shmat(shmid, NULL, 0);
+
+            if (shmptr== (void *)-1)
+            {
+                perror("shmat");
+                continue;
+            }
             int starting_node;
             printf("Enter starting node\n");
             scanf("%d", &starting_node);
+            shmptr[0] = starting_node;
+            
         }
         else if (operaton_number == 4)
         {
             // BFS
 
-            int starting_node;
+              int starting_node;
             printf("Enter starting node\n");
             scanf("%d", &starting_node);
+
+            key_t shmkey;
+            if ((shmkey = ftok("client.c", sequence_number)) == -1)
+            {
+                perror("SHM Key could not be created\n");
+                continue;
+            }
+
+            int shmid;
+            int *shmptr;
+            shmid = shmget(shmkey, sizeof(int), IPC_CREAT | PERMS);
+            if (shmid == -1)
+            {
+                perror("Error occured in creating SHM segment");
+                continue;
+            }
+
+            shmptr = (int *)shmat(shmid, NULL, 0);
+
+            if (shmptr== (void *)-1)
+            {
+                perror("shmat");
+                continue;
+            }
+
+            shmptr[0] = starting_node;
         }
         else
             continue;
