@@ -43,7 +43,7 @@ int main(int argc, char const *argv[])
     while (1)
     {
         //  break;
-        if (msgrcv(msqid, &buf, sizeof(buf.mtext), -100, 0) == -1)
+        if (msgrcv(msqid, &buf, sizeof(buf.mtext), -101, 0) == -1)
         {
             perror("msgrcv error");
             exit(1);
@@ -94,6 +94,7 @@ int main(int argc, char const *argv[])
         else if (operation == 9)
         {
             // cleanup
+            printf("CLEANUP");
             buf.operation_number = CLEANUP_CODE;
             sprintf(buf.mtext,"CLEANUP");
 

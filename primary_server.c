@@ -24,8 +24,7 @@
 int tidptr = 0;
 pthread_t tid[10000];
 pthread_attr_t attr[10000];
-FILE *fileptr[20];
-sem_t *semaphore_write[20];
+sem_t *semaphore_write[21];
 int msqid;
 key_t key;
 
@@ -58,19 +57,20 @@ void *writeToGraphDB(void *arg)
         temp[1] = args->filename[2];
         index = atoi(temp);
     }
-    printf("intdex : %d \n",index);
+    printf("intdex : %d \n", index);
+    
     sem_wait(semaphore_write[index]);
 
     /*open for reading and writing.
    If file exists deletes content and overwrites the file,
     otherwise creates an empty new file*/
-    fileptr[index] = fopen(args->filename, "w+");
+    FILE *file = fopen(args->filename, "w+");
 
     printf("%s\n", args->filename);
     printf("%d\n", args->sequence_number);
 
     // do work
-    if (fileptr[index] == NULL)
+    if (file == NULL)
     {
         sem_post(semaphore_write[index]);
         return NULL;
@@ -78,6 +78,12 @@ void *writeToGraphDB(void *arg)
     // sleep(20);
 
     // connct to shared memory of client
+    sem_t *shmSemaphore;
+    char sem_name[50];
+    sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
+    shmSemaphore = sem_open(sem_name, 0, PERMS, 1);
+
+    sem_wait(shmSemaphore);
     key_t shmkey;
     if ((shmkey = ftok("client.c", args->sequence_number)) == -1)
     {
@@ -94,14 +100,6 @@ void *writeToGraphDB(void *arg)
         perror("Error occured in creating SHM segment");
         return NULL;
     }
-    // while(shmid == -1 && temp--)
-    // {
-
-    // }
-    // if(temp==0 || shmid==-1){
-    //     perror("Error occured in creating SHM segment");
-    //     return NULL;
-    // }
     shmptr = shmat(shmid, 0, 0);
 
     if (shmptr == (void *)-1)
@@ -109,10 +107,10 @@ void *writeToGraphDB(void *arg)
         perror("shmat");
         return NULL;
     }
+    
+
     int nodes = shmptr[0];
-    while(nodes<1 || nodes>30){
-        nodes = shmptr[0];
-    }
+
     int adj[nodes][nodes];
     for (int i = 1; i <= nodes; i++)
     {
@@ -122,20 +120,21 @@ void *writeToGraphDB(void *arg)
             adj[i - 1][j - 1] = shmptr[i * nodes + j];
         }
     }
-    
-    fprintf(fileptr[index], "%d", nodes);
-    fprintf(fileptr[index], "\n");
+
+    sem_post(shmSemaphore);
+    fprintf(file, "%d", nodes);
+    fprintf(file, "\n");
     for (int i = 0; i < nodes; i++)
     {
         for (int j = 0; j < nodes; j++)
         {
 
-            fprintf(fileptr[index], "%d ", adj[i][j]);
+            fprintf(file, "%d ", adj[i][j]);
         }
-        fprintf(fileptr[index], "\n");
+        fprintf(file, "\n");
     }
-    fclose(fileptr[index]);
-    sleep(30);
+    fclose(file);
+
     if (shmdt(shmptr) == -1)
     {
         perror("Detaching error");
@@ -156,7 +155,9 @@ void *writeToGraphDB(void *arg)
     }
 
     sem_post(semaphore_write[index]);
-
+    sem_close(shmSemaphore);
+    sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
+    sem_unlink(sem_name);
     printf("exiting...%d\n", args->sequence_number);
 
     return NULL;
@@ -179,7 +180,7 @@ int main(int argc, char const *argv[])
     }
 
     char sem_name[50];
-    for (int i = 0; i < 20; i++)
+    for (int i = 0; i < 21; i++)
     {
         sprintf(sem_name, "__writerSemaphore__%d__", i);
         semaphore_write[i] = sem_open(sem_name, O_CREAT, PERMS, 1); // 0x0100 means create if doesnt exist already
@@ -192,9 +193,10 @@ int main(int argc, char const *argv[])
             perror("msgrcv error");
             exit(1);
         }
-        printf("%d\n",buf.operation_number/10);
-        if (buf.operation_number == -1)
-            break;
+        printf("%d\n", buf.operation_number / 10);
+
+        if (buf.operation_number == -1) break;
+
         int operation = buf.operation_number % 10;
         int sequence_number = buf.operation_number / 10;
         thread_arg *args = malloc(sizeof(thread_arg));
@@ -208,12 +210,15 @@ int main(int argc, char const *argv[])
     }
 
     // cleanup
-
-    for (int i = 0; i < 20; i++)
+    for(int i=0;i<tidptr;i++){
+        pthread_join(tid[i],NULL);
+    }
+    for (int i = 0; i < 21; i++)
     {
         sem_close(semaphore_write[i]);
-        sprintf(sem_name, "mutex_%d", i);
+        sprintf(sem_name, "__writerSemaphore__%d__", i);
         sem_unlink(sem_name); // 0x0100 means create if doesnt exist already
     }
+    
     return 0;
 }

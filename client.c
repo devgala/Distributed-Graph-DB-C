@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <semaphore.h>
+#include <fcntl.h>
 
 #define PERMS 0644 // file permissions
 #define MAX_GRAPH_NODES 30
@@ -28,6 +30,7 @@ void displayMenu()
 
 int main(int argc, char const *argv[])
 {
+
     struct message buf;
     int msqid; // message qid
     int len;
@@ -77,10 +80,12 @@ int main(int argc, char const *argv[])
         if (operaton_number == 1)
         {
             // new graph
-
+            sem_t *shmSemaphore;
+            char sem_name[50];
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
             // take input for graph
-            
-
+            sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
             {
@@ -99,7 +104,7 @@ int main(int argc, char const *argv[])
 
             shmptr = (int *)shmat(shmid, NULL, 0);
 
-            if (shmptr== (void *)-1)
+            if (shmptr == (void *)-1)
             {
                 perror("shmat");
                 continue;
@@ -127,46 +132,51 @@ int main(int argc, char const *argv[])
 
                 for (int j = 1; j <= n; j++)
                 {
-                    shmptr[i*n + j] = adj[i - 1][j - 1];
-                    
+                    shmptr[i * n + j] = adj[i - 1][j - 1];
                 }
-                 
             }
-            
-            for(int i=1;i<=n;i++){
-             for (int j = 1; j <= n; j++)
+
+            for (int i = 1; i <= n; i++)
+            {
+                for (int j = 1; j <= n; j++)
                 {
-                    printf("%d ", shmptr[i*n + j]);
+                    printf("%d ", shmptr[i * n + j]);
                 }
             }
             printf("write to shm complete\n");
-
+            sem_post(shmSemaphore);
             // process response
             if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
             {
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("%s\n",buf.mtext);
+            printf("%s\n", buf.mtext);
             // delete shared memory segment after recieving response
-           
-                if (shmdt(shmptr) == -1)
-                {
-                    perror("Detaching error");
-                    break;
-                }
-            
+
+            if (shmdt(shmptr) == -1)
+            {
+                perror("Detaching error");
+                break;
+            }
 
             if (shmctl(shmid, IPC_RMID, 0) == -1)
             {
                 perror("SHMCTL");
                 return 1;
             }
+            sem_close(shmSemaphore);
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
         }
         else if (operaton_number == 2)
         {
             // update graph
-            
+            sem_t *shmSemaphore;
+            char sem_name[50];
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
             {
@@ -185,7 +195,7 @@ int main(int argc, char const *argv[])
 
             shmptr = (int *)shmat(shmid, NULL, 0);
 
-            if (shmptr== (void *)-1)
+            if (shmptr == (void *)-1)
             {
                 perror("shmat");
                 continue;
@@ -214,48 +224,52 @@ int main(int argc, char const *argv[])
 
                 for (int j = 1; j <= n; j++)
                 {
-                    shmptr[i*n + j] = adj[i - 1][j - 1];
-                    
+                    shmptr[i * n + j] = adj[i - 1][j - 1];
                 }
-                 
             }
-            
-            for(int i=1;i<=n;i++){
-             for (int j = 1; j <= n; j++)
+
+            for (int i = 1; i <= n; i++)
+            {
+                for (int j = 1; j <= n; j++)
                 {
-                    printf("%d ", shmptr[i*n + j]);
+                    printf("%d ", shmptr[i * n + j]);
                 }
             }
             printf("write to shm complete\n");
-
+            sem_post(shmSemaphore);
             // process response
-             if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
+           
+            if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
             {
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("%s\n",buf.mtext);
+            printf("%s\n", buf.mtext);
             // delete shared memory segment after recieving response
-            
-                if (shmdt(shmptr) == -1)
-                {
-                    perror("Detaching error");
-                    break;
-                }
-            
+
+            if (shmdt(shmptr) == -1)
+            {
+                perror("Detaching error");
+                break;
+            }
 
             if (shmctl(shmid, IPC_RMID, 0) == -1)
             {
                 perror("SHMCTL");
                 continue;
             }
+            sem_close(shmSemaphore);
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
         }
         else if (operaton_number == 3)
         {
             // DFS
-
-            
-
+            sem_t *shmSemaphore;
+            char sem_name[50];
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
             {
@@ -274,7 +288,7 @@ int main(int argc, char const *argv[])
 
             shmptr = (int *)shmat(shmid, NULL, 0);
 
-            if (shmptr== (void *)-1)
+            if (shmptr == (void *)-1)
             {
                 perror("shmat");
                 continue;
@@ -283,16 +297,42 @@ int main(int argc, char const *argv[])
             printf("Enter starting node\n");
             scanf("%d", &starting_node);
             shmptr[0] = starting_node;
+
+            sem_post(shmSemaphore);
+            // response from server
+            if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
+            {
+                perror("msgrcv error");
+                exit(1);
+            }
+
+            printf("%s\n", buf.mtext);
+
+            if (shmdt(shmptr) == -1)
+            {
+                perror("Detaching error");
+                break;
+            }
+
+            if (shmctl(shmid, IPC_RMID, 0) == -1)
+            {
+                perror("SHMCTL");
+                continue;
+            }
+
+            sem_close(shmSemaphore);
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
             
         }
         else if (operaton_number == 4)
         {
             // BFS
-
-              int starting_node;
-            printf("Enter starting node\n");
-            scanf("%d", &starting_node);
-
+            sem_t *shmSemaphore;
+            char sem_name[50];
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
             {
@@ -311,13 +351,39 @@ int main(int argc, char const *argv[])
 
             shmptr = (int *)shmat(shmid, NULL, 0);
 
-            if (shmptr== (void *)-1)
+            if (shmptr == (void *)-1)
             {
                 perror("shmat");
                 continue;
             }
-
+            int starting_node;
+            printf("Enter starting node\n");
+            scanf("%d", &starting_node);
             shmptr[0] = starting_node;
+
+            sem_post(shmSemaphore);
+            if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
+            {
+                perror("msgrcv error");
+                exit(1);
+            }
+
+            printf("%s\n", buf.mtext);
+
+            if (shmdt(shmptr) == -1)
+            {
+                perror("Detaching error");
+                break;
+            }
+
+            if (shmctl(shmid, IPC_RMID, 0) == -1)
+            {
+                perror("SHMCTL");
+                continue;
+            }
+            sem_close(shmSemaphore);
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
         }
         else
             continue;
