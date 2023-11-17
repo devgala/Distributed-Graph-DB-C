@@ -18,7 +18,7 @@
 #define SECONDARY_SERVER_2_CODE 1002
 #define SECONDARY_SERVER_1_CODE 1001
 #define CLEANUP_CODE -1
-
+#define QUEUE_MAX_SIZE 200
 int tidptr = 0;
 pthread_t tid[10000];
 pthread_attr_t attr[10000];
@@ -38,6 +38,12 @@ struct message
     char mtext[200];
 };
 
+struct Queue
+{
+    int array[QUEUE_MAX_SIZE];
+    int front, rear;
+} typedef Queue;
+
 struct thread_arg
 {
     char filename[200];
@@ -52,48 +58,146 @@ struct TraverseArgs
     int **adjList;
     char *str;
     int n;
-    char *returnValue;
+    Queue *queue;
+    pthread_mutex_t *lock;
 } typedef TraverseArgs;
+
+TraverseArgs *initializeTraverseArgs(int currentNode, int *vis, int **adjList, char *str, int n, Queue *queue, pthread_mutex_t *lock)
+{
+    TraverseArgs *traverseArgs = malloc(sizeof(TraverseArgs));
+    traverseArgs->adjList = adjList;
+    traverseArgs->currentNode = currentNode;
+    traverseArgs->n = n;
+    traverseArgs->vis = vis;
+    traverseArgs->queue = queue;
+    traverseArgs->lock = lock;
+    traverseArgs->str = str;
+    return traverseArgs;
+}
+
+struct Queue *getQueue()
+{
+    struct Queue *queue = (struct Queue *)malloc(sizeof(struct Queue));
+    if (!queue)
+    {
+        perror("Memory allocation error");
+        exit(EXIT_FAILURE);
+    }
+    queue->front = queue->rear = -1;
+    return queue;
+}
+
+int queueIsEmpty(struct Queue *queue)
+{
+    return (queue->front == -1);
+}
+
+int queueIsFull(struct Queue *queue)
+{
+    return (queue->rear == QUEUE_MAX_SIZE - 1);
+}
+
+void push(struct Queue *queue, int data)
+{
+    // Check if the queue is full
+    if (queueIsFull(queue))
+    {
+        return;
+    }
+
+    // If the queue is empty, set the front to 0
+    if (queueIsEmpty(queue))
+    {
+        queue->front = 0;
+    }
+
+    // Increment the rear and add the new element
+    queue->array[++queue->rear] = data;
+}
+
+int pop_front(struct Queue *queue)
+{
+    // Check if the queue is empty
+    if (queueIsEmpty(queue))
+    {
+        return -1;
+    }
+
+    // Get the data from the front and increment the front pointer
+    int data = queue->array[queue->front++];
+
+    // If the front surpasses the rear, reset the front and rear to -1
+    if (queue->front > queue->rear)
+    {
+        queue->front = queue->rear = -1;
+    }
+
+    return data;
+}
+
+int queueSize(struct Queue *queue)
+{
+    if (queueIsEmpty(queue))
+    {
+        return 0;
+    }
+    else
+    {
+        return queue->rear - queue->front + 1;
+    }
+}
 
 void *DFShelper(void *arg)
 {
+    //extract argument to thread
     TraverseArgs *traverseArgs = (TraverseArgs *)arg;
     int n = traverseArgs->n;
     int currentNode = traverseArgs->currentNode;
     int **adjList = traverseArgs->adjList;
     int *vis = traverseArgs->vis;
     vis[currentNode] = 1;
+
+    //base case condition
     if (**(adjList + currentNode) == -1 || (*(*(adjList + currentNode) + 1) == -1 && vis[**(adjList + currentNode)] == 1))
     {
-        printf("Deepest : %d\n", currentNode + 1);
         // add to string
         char *str = traverseArgs->str;
         int len = strlen(str);
         char node[10];
-        sprintf(node, "%d_", currentNode + 1);
+        sprintf(node, "%d ", currentNode + 1);
         for (int i = len; i < len + strlen(node); i++)
         {
             str[i] = node[i - len];
         }
         pthread_exit(NULL);
     }
+    pthread_t threads[MAX_GRAPH_NODES + 1];
+    int itr = 0;
     for (int i = 0; i < n; i++)
     {
         if (*(*(adjList + currentNode) + i) == -1)
             break;
         if (vis[*(*(adjList + currentNode) + i)] == 0)
         {
-            traverseArgs->currentNode = *(*(adjList + currentNode) + i);
-            pthread_t tid;
-            pthread_create(&tid, NULL, DFShelper, (void *)traverseArgs);
-            pthread_join(tid, NULL);
+
+            //start threads on unvisited neighbours
+            TraverseArgs *temp = initializeTraverseArgs(*(*(adjList + currentNode) + i),vis,adjList,traverseArgs->str,n,NULL,NULL);
+            pthread_create(&threads[itr], NULL, DFShelper, (void *)temp);
+            itr++;
         }
+    }
+    for (int i = 0; i < itr; i++)
+    {
+        //wait for all neighbours to end
+        pthread_join(threads[i], NULL);
     }
     pthread_exit(NULL);
 }
 
 void *DFS(void *arg)
 {
+
+    //extract file name and get index
     thread_arg *args = (thread_arg *)arg;
     int index;
     if (args->filename[2] == '.')
@@ -110,7 +214,7 @@ void *DFS(void *arg)
         index = (temp1 - '0') * 10 + (temp2 - '0');
     }
 
-    // sync code
+    // synchrnization using named semaphore
     sem_wait(semaphore_read[index]);
     readerCount[index]++;
     if (readerCount[index] == 1)
@@ -120,10 +224,11 @@ void *DFS(void *arg)
     FILE *file = fopen(args->filename, "r");
     if (file == NULL)
     {
-        // sem_post(semaphore_write[index]);
+         sem_post(semaphore_write[index]);
         return NULL;
     }
 
+    //get starting node from Shared Memory
     sem_t *shmSemaphore;
     char sem_name[50];
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
@@ -174,15 +279,16 @@ void *DFS(void *arg)
 
     sem_post(shmSemaphore);
 
-    printf("read complete\n");
     sem_wait(semaphore_read[index]);
     readerCount[index]--;
-    if (readerCount[index] == 0){
-        printf("\n\nzero reader\n\n");
+    if (readerCount[index] == 0)
+    {
         sem_post(semaphore_write[index]);
     }
     sem_post(semaphore_read[index]);
 
+
+    // create adjecency list
     int **adjList = (int **)malloc((MAX_GRAPH_NODES + 1) * sizeof(int *));
     for (int i = 0; i < MAX_GRAPH_NODES + 1; i++)
     {
@@ -205,33 +311,21 @@ void *DFS(void *arg)
         }
     }
 
-    for (int i = 0; i < n; i++)
-    {
-
-        for (int j = 0; j < n; j++)
-        {
-            printf("%d ", adjList[i][j]);
-        }
-        printf("\n");
-    }
-    char response[200];
-    int vis[MAX_GRAPH_NODES + 1];
+    char *response = (char *)malloc(200 * sizeof(char));
+    int *vis = (int *)calloc((MAX_GRAPH_NODES + 1), sizeof(int));
     for (int i = 0; i < MAX_GRAPH_NODES + 1; i++)
     {
         vis[i] = 0;
     }
-    TraverseArgs *traverseArgs = malloc(sizeof(TraverseArgs));
-    traverseArgs->n = n;
-    traverseArgs->currentNode = starting_node;
-    traverseArgs->str = response;
-    traverseArgs->vis = vis;
-    traverseArgs->adjList = adjList;
+
+    TraverseArgs *traverseArgs =initializeTraverseArgs(starting_node,vis,adjList,response,n,NULL,NULL);
+
+    //start DFS
     pthread_t tid;
     pthread_create(&tid, NULL, DFShelper, (void *)traverseArgs);
     pthread_join(tid, NULL);
-    printf("%s %ld\n", response, strlen(response));
-    //  str[len(str)] = '\0';
-    // send list of vertices
+
+    //send result of DFS to client at 1000*sequence_number
     struct message buf;
     strcpy(buf.mtext, response);
     buf.sequence_number = args->unique_id;
@@ -240,70 +334,40 @@ void *DFS(void *arg)
     {
         printf("Server has terminated or error in sending message");
     }
-
+    printf("Response sent to %d\n\n",args->sequence_number);
     pthread_exit(NULL);
 }
 
 void *BFShelper(void *arg)
 {
+    //extract argument to thread
     TraverseArgs *traverseArgs = (TraverseArgs *)arg;
     int n = traverseArgs->n;
     int currentNode = traverseArgs->currentNode;
     int **adjList = traverseArgs->adjList;
     int *vis = traverseArgs->vis;
-    char *res = (char *)malloc(10 * sizeof(char));
-    vis[currentNode] = 1;
-    if (**(adjList + currentNode) == -1 || (*(*(adjList + currentNode) + 1) == -1 && vis[**(adjList + currentNode)] == 1))
-    {
-        printf("this is end %d\n", currentNode + 1);
-        pthread_exit(NULL);
-    }
-    TraverseArgs *traverseArray[MAX_GRAPH_NODES + 1];
-    for (int i = 0; i < MAX_GRAPH_NODES + 1; i++)
-    {
-        traverseArray[i] = NULL;
-    }
-    pthread_t tid[MAX_GRAPH_NODES + 1];
-    int itr = 0;
-    for (int i = 0; i < n; i++)
-    {
+    Queue *queue = traverseArgs->queue;
+    int i = 0;
 
-        if (*(*(adjList + currentNode) + i) == -1)
-            break;
+    //add neighbours to queue
+    while (*(*(adjList + currentNode) + i) != -1)
+    {
         if (vis[*(*(adjList + currentNode) + i)] == 0)
         {
-            printf("yes\n");
-            sprintf(res, "%d_", *(*(adjList + currentNode) + i) + 1);
-            strcat(traverseArgs->str, res);
-            printf("%d %s\n", currentNode + 1, (traverseArgs->str));
-            TraverseArgs *temp = (TraverseArgs *)malloc(sizeof(TraverseArgs));
-            temp->currentNode = *(*(adjList + currentNode) + i);
-            temp->adjList = traverseArgs->adjList;
-            temp->vis = traverseArgs->vis;
-            temp->n = n;
-            temp->str = traverseArgs->str;
-            traverseArray[itr] = temp;
-            itr++;
+            // using mutex to synchronize queue operation
+            pthread_mutex_lock(traverseArgs->lock);
+            push(queue, *(*(adjList + currentNode) + i));
+            pthread_mutex_unlock(traverseArgs->lock);
         }
-    }
-    int j = 0;
-    while (j < itr && traverseArray[j] != NULL)
-    {
-        pthread_create(&tid[j], NULL, BFShelper, (void *)traverseArray[j]);
-        j++;
-    }
-    for (int i = 0; i < itr; i++)
-    {
-        if (tid[i] != -1)
-        {
-            printf("join_%d\n", i + 1);
-            pthread_join(tid[i], NULL);
-        }
+        i++;
     }
     pthread_exit(NULL);
 }
+
 void *BFS(void *arg)
 {
+
+    //get arguments and index 
     thread_arg *args = (thread_arg *)arg;
     int index;
     if (args->filename[2] == '.')
@@ -318,7 +382,7 @@ void *BFS(void *arg)
         index = atoi(temp);
     }
 
-    // sync code
+    // synchronization using named semaphore
     sem_wait(semaphore_read[index]);
     readerCount[index]++;
     if (readerCount[index] == 1)
@@ -328,19 +392,21 @@ void *BFS(void *arg)
     FILE *file = fopen(args->filename, "r");
     if (file == NULL)
     {
-        // sem_post(semaphore_write[index]);
+        sem_post(semaphore_write[index]);
         return NULL;
     }
+
+    //getting starting node from shared memory
     sem_t *shmSemaphore;
     char sem_name[50];
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
     shmSemaphore = sem_open(sem_name, 0, PERMS, 1);
-    printf("reader");
     sem_wait(shmSemaphore);
     key_t shmkey;
     if ((shmkey = ftok("client.c", args->sequence_number)) == -1)
     {
         perror("SHM Key could not be created\n");
+        sem_post(semaphore_write[index]);
         return NULL;
     }
 
@@ -351,6 +417,7 @@ void *BFS(void *arg)
     if (shmid == -1)
     {
         perror("Error occured in creating SHM segment");
+        sem_post(semaphore_write[index]);
         return NULL;
     }
     shmptr = shmat(shmid, 0, 0);
@@ -358,13 +425,13 @@ void *BFS(void *arg)
     if (shmptr == (void *)-1)
     {
         perror("shmat");
+        sem_post(semaphore_write[index]);
         return NULL;
     }
     int starting_node = shmptr[0];
     starting_node--;
     int n;
     sem_post(shmSemaphore);
-    printf("shm");
     fscanf(file, "%d", &n);
 
     int adj[n][n];
@@ -376,13 +443,13 @@ void *BFS(void *arg)
         }
     }
     fclose(file);
-    printf("read complete\n");
     sem_wait(semaphore_read[index]);
     readerCount[index]--;
     if (readerCount[index] == 0)
         sem_post(semaphore_write[index]);
     sem_post(semaphore_read[index]);
-    printf("read2\n");
+
+    //making adjecency list
     int **adjList = (int **)malloc((MAX_GRAPH_NODES + 1) * sizeof(int *));
     for (int i = 0; i < MAX_GRAPH_NODES + 1; i++)
     {
@@ -405,50 +472,53 @@ void *BFS(void *arg)
         }
     }
 
-    for (int i = 0; i < n; i++)
+    //  BFS
+    char *breadth_first_traversal = (char *)calloc(200, sizeof(char));
+    int *vis = (int *)calloc(MAX_GRAPH_NODES + 1, sizeof(int));
+    char res[10];
+    Queue *queue = getQueue();
+    pthread_mutex_t lock;
+    pthread_mutex_init(&lock, NULL);
+    pthread_t threads[MAX_GRAPH_NODES + 1];
+    int itr = 0;
+    push(queue, starting_node);
+    while (!queueIsEmpty(queue))
     {
-
-        for (int j = 0; j < n; j++)
+        itr = 0;
+        int size = queueSize(queue);
+        for (int i = 0; i < size; i++)
         {
-            printf("%d ", adjList[i][j]);
-        }
-        printf("\n");
-    }
-    char str[200];
-    int vis[MAX_GRAPH_NODES + 1];
-    TraverseArgs *traverseArgs = malloc(sizeof(TraverseArgs));
-    traverseArgs->n = n;
-    traverseArgs->currentNode = starting_node;
-    traverseArgs->str = str;
-    traverseArgs->vis = vis;
-    traverseArgs->adjList = adjList;
-    sprintf(str, "%d_", starting_node + 1);
-    pthread_t tid;
-    pthread_create(&tid, NULL, BFShelper, (void *)traverseArgs);
-    pthread_join(tid, NULL);
-    printf("BFS: %s\n", str);
 
+            int node = pop_front(queue);
+            vis[node] = 1;
+            sprintf(res, "%d ", node + 1);
+            strcat(breadth_first_traversal, res);
+            TraverseArgs *temp = initializeTraverseArgs(node,vis,adjList,NULL,n,queue,&lock);
+            pthread_create(&threads[itr], NULL, BFShelper, (void *)temp);
+            itr++;
+        }
+        for (int i = 0; i < itr; i++)
+        {
+            pthread_join(threads[i], NULL);
+        }
+    }
+    pthread_mutex_destroy(&lock);
     // send list of vertices
     struct message buf;
-    strcpy(buf.mtext, str);
+    strcpy(buf.mtext, breadth_first_traversal);
     buf.sequence_number = args->unique_id;
     buf.operation_number = args->sequence_number;
     if (msgsnd(msqid, &buf, sizeof(buf.mtext), 0) == -1)
     {
         printf("Server has terminated or error in sending message");
     }
-    // free(str);
-    // free(vis);
-    // for(int i=0;i<MAX_GRAPH_NODES+1;i++){
-    //     free(adjList[i]);
-    // }
-    // free(adjList);
-    // free(args);
+    printf("Response sent to %d\n\n", args->sequence_number);
     pthread_exit(NULL);
 }
 
 int main(int argc, char const *argv[])
 {
+    //connect to SHM for reader count between processes
     if ((readerKey = ftok("secondary_server.c", 12345)) == -1)
     {
         perror("SHM Key could not be created\n");
@@ -486,7 +556,15 @@ int main(int argc, char const *argv[])
     int len;
 
     // decide how to make it odd even
-    int recieveChannel = SECONDARY_SERVER_1_CODE;
+    int parity;
+    printf("If server is ODD then enter 1\nIf server is EVEN enter 2:\n");
+    scanf("%d",&parity);
+    int recieveChannel = (parity==1) ? SECONDARY_SERVER_1_CODE : SECONDARY_SERVER_2_CODE;\
+
+    if(parity==1){
+        printf("This is ODD server\n\n");
+
+    }else printf("This is EVEN server\n\n");
     if ((key = ftok("load_balancer.c", 'W')) == -1)
     {
         perror("ftok");
@@ -502,13 +580,16 @@ int main(int argc, char const *argv[])
 
     while (1)
     {
+        //recieve messages from queue
         if (msgrcv(msqid, &buf, sizeof(buf.mtext), recieveChannel, 0) == -1)
         {
             perror("msgrcv error");
             exit(1);
         }
+        //CLEANUP condition
         if (buf.operation_number == -1)
             break;
+   
         int operation = buf.operation_number % 10;
         int sequence_number = buf.operation_number / 10;
         thread_arg *args = malloc(sizeof(thread_arg));
@@ -524,6 +605,7 @@ int main(int argc, char const *argv[])
     }
 
     // cleanup
+    printf("CLEANUP\n\n");
     if (shmdt(readerCount) == -1)
     {
         perror("Detaching error");

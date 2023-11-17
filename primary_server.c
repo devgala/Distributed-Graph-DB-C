@@ -56,9 +56,7 @@ void *writeToGraphDB(void *arg)
         temp[0] = args->filename[1];
         temp[1] = args->filename[2];
         index = atoi(temp);
-    }
-    printf("intdex : %d \n", index);
-    
+    }    
     sem_wait(semaphore_write[index]);
 
     /*open for reading and writing.
@@ -66,10 +64,6 @@ void *writeToGraphDB(void *arg)
     otherwise creates an empty new file*/
     FILE *file = fopen(args->filename, "w+");
 
-    printf("%s\n", args->filename);
-    printf("%d\n", args->sequence_number);
-
-    // do work
     if (file == NULL)
     {
         sem_post(semaphore_write[index]);
@@ -158,8 +152,8 @@ void *writeToGraphDB(void *arg)
     sem_close(shmSemaphore);
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
     sem_unlink(sem_name);
-    printf("exiting...%d\n", args->sequence_number);
-
+    
+    printf("Response sent to %d\n",args->sequence_number);
     return NULL;
 }
 int main(int argc, char const *argv[])
@@ -193,12 +187,14 @@ int main(int argc, char const *argv[])
             perror("msgrcv error");
             exit(1);
         }
-        printf("%d\n", buf.operation_number / 10);
+        
 
         if (buf.operation_number == -1) break;
 
         int operation = buf.operation_number % 10;
         int sequence_number = buf.operation_number / 10;
+
+        printf("(Sequence Number, Operation) : (%d %d)\n",sequence_number,operation);
         thread_arg *args = malloc(sizeof(thread_arg));
         thread_arg temp;
         strcpy(args->filename, buf.mtext);
@@ -210,6 +206,7 @@ int main(int argc, char const *argv[])
     }
 
     // cleanup
+    printf("CLEANUP\n\n");
     for(int i=0;i<tidptr;i++){
         pthread_join(tid[i],NULL);
     }

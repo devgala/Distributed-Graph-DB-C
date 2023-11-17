@@ -48,11 +48,10 @@ int main(int argc, char const *argv[])
             perror("msgrcv error");
             exit(1);
         }
-        printf("%ld\n",buf.sequence_number);
-        printf("%d\n",buf.operation_number);
-        printf("%s\n",buf.mtext);
         int operation = buf.operation_number;
         int sequence_number = buf.sequence_number;
+        if(operation!=9)
+        printf("(Sequence Number, Operation Number): (%d %d)\n\n",operation,sequence_number);
         if (sequence_number == PRIMARY_SEVER_CODE || sequence_number == SECONDARY_SERVER_1_CODE || sequence_number == SECONDARY_SERVER_2_CODE)
         {
             // send back to queue
@@ -132,15 +131,3 @@ int main(int argc, char const *argv[])
 
     return 0;
 }
-
-//  if (msgrcv(msqid, &buf, sizeof(buf.mtext), 0, 0) == -1)
-//         {
-//             perror("msgrcv");
-//             exit(1);
-//         }
-
-//         printf("%s",buf.mtext);
-//         if(msgctl(msqid,IPC_RMID,NULL)==-1){
-//        perror("mdgctl");
-//        exit(1);
-//    }

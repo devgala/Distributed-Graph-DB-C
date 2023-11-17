@@ -143,7 +143,6 @@ int main(int argc, char const *argv[])
                     printf("%d ", shmptr[i * n + j]);
                 }
             }
-            printf("write to shm complete\n");
             sem_post(shmSemaphore);
             // process response
             if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
@@ -151,7 +150,7 @@ int main(int argc, char const *argv[])
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("%s\n", buf.mtext);
+            printf("Response from server: \n%s\n\n", buf.mtext);
             // delete shared memory segment after recieving response
 
             if (shmdt(shmptr) == -1)
@@ -235,16 +234,15 @@ int main(int argc, char const *argv[])
                     printf("%d ", shmptr[i * n + j]);
                 }
             }
-            printf("write to shm complete\n");
             sem_post(shmSemaphore);
             // process response
-           
+
             if (msgrcv(msqid, &buf, sizeof(buf.mtext), 1000 * sequence_number, 0) == -1)
             {
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("%s\n", buf.mtext);
+            printf("Response from server: \n%s\n\n", buf.mtext);
             // delete shared memory segment after recieving response
 
             if (shmdt(shmptr) == -1)
@@ -306,7 +304,7 @@ int main(int argc, char const *argv[])
                 exit(1);
             }
 
-            printf("%s\n", buf.mtext);
+            printf("Response from server: \n%s\n\n", buf.mtext);
 
             if (shmdt(shmptr) == -1)
             {
@@ -323,7 +321,6 @@ int main(int argc, char const *argv[])
             sem_close(shmSemaphore);
             sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
             sem_unlink(sem_name);
-            
         }
         else if (operaton_number == 4)
         {
@@ -367,8 +364,7 @@ int main(int argc, char const *argv[])
                 perror("msgrcv error");
                 exit(1);
             }
-
-            printf("%s\n", buf.mtext);
+            printf("Response from server: \n%s\n\n", buf.mtext);
 
             if (shmdt(shmptr) == -1)
             {
@@ -391,12 +387,3 @@ int main(int argc, char const *argv[])
 
     return 0;
 }
-
-/*
-len = sprintf(buf.mtext, "hi");
-     if (msgsnd(msqid, &buf, len + 1, 0) == -1)
-        {
-            printf("Server has terminated or error in sending message");
-            exit(1);
-        }
-*/
