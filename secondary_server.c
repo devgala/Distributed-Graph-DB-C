@@ -65,6 +65,11 @@ struct TraverseArgs
 TraverseArgs *initializeTraverseArgs(int currentNode, int *vis, int **adjList, char *str, int n, Queue *queue, pthread_mutex_t *lock)
 {
     TraverseArgs *traverseArgs = malloc(sizeof(TraverseArgs));
+    if (!traverseArgs)
+    {
+        printf("Memory allocation error");
+        return NULL;
+    }
     traverseArgs->adjList = adjList;
     traverseArgs->currentNode = currentNode;
     traverseArgs->n = n;
@@ -149,7 +154,7 @@ int queueSize(struct Queue *queue)
 
 void *DFShelper(void *arg)
 {
-    //extract argument to thread
+    // extract argument to thread
     TraverseArgs *traverseArgs = (TraverseArgs *)arg;
     int n = traverseArgs->n;
     int currentNode = traverseArgs->currentNode;
@@ -157,7 +162,7 @@ void *DFShelper(void *arg)
     int *vis = traverseArgs->vis;
     vis[currentNode] = 1;
 
-    //base case condition
+    // base case condition
     if (**(adjList + currentNode) == -1 || (*(*(adjList + currentNode) + 1) == -1 && vis[**(adjList + currentNode)] == 1))
     {
         // add to string
@@ -165,10 +170,12 @@ void *DFShelper(void *arg)
         int len = strlen(str);
         char node[10];
         sprintf(node, "%d ", currentNode + 1);
+        pthread_mutex_lock(traverseArgs->lock);
         for (int i = len; i < len + strlen(node); i++)
         {
             str[i] = node[i - len];
         }
+        pthread_mutex_unlock(traverseArgs->lock);
         pthread_exit(NULL);
     }
     pthread_t threads[MAX_GRAPH_NODES + 1];
@@ -180,15 +187,20 @@ void *DFShelper(void *arg)
         if (vis[*(*(adjList + currentNode) + i)] == 0)
         {
 
-            //start threads on unvisited neighbours
-            TraverseArgs *temp = initializeTraverseArgs(*(*(adjList + currentNode) + i),vis,adjList,traverseArgs->str,n,NULL,NULL);
-            pthread_create(&threads[itr], NULL, DFShelper, (void *)temp);
+            // start threads on unvisited neighbours
+            TraverseArgs *temp = initializeTraverseArgs(*(*(adjList + currentNode) + i), vis, adjList, traverseArgs->str, n, NULL, traverseArgs->lock);
+            int res = pthread_create(&threads[itr], NULL, DFShelper, (void *)temp);
+            if (res != 0)
+            {
+                printf("Error occured in thread creation");
+                return NULL;
+            }
             itr++;
         }
     }
     for (int i = 0; i < itr; i++)
     {
-        //wait for all neighbours to end
+        // wait for all neighbours to end
         pthread_join(threads[i], NULL);
     }
     pthread_exit(NULL);
@@ -197,7 +209,7 @@ void *DFShelper(void *arg)
 void *DFS(void *arg)
 {
 
-    //extract file name and get index
+    // extract file name and get index
     thread_arg *args = (thread_arg *)arg;
     int index;
     if (args->filename[2] == '.')
@@ -224,16 +236,20 @@ void *DFS(void *arg)
     FILE *file = fopen(args->filename, "r");
     if (file == NULL)
     {
-         sem_post(semaphore_write[index]);
+        sem_post(semaphore_write[index]);
         return NULL;
     }
 
-    //get starting node from Shared Memory
+    // get starting node from Shared Memory
     sem_t *shmSemaphore;
     char sem_name[50];
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
     shmSemaphore = sem_open(sem_name, 0, PERMS, 1);
-
+    if (shmSemaphore == SEM_FAILED)
+    {
+        printf("Error occured in semaphore creation");
+        return NULL;
+    }
     sem_wait(shmSemaphore);
     key_t shmkey;
     if ((shmkey = ftok("client.c", args->sequence_number)) == -1)
@@ -241,7 +257,6 @@ void *DFS(void *arg)
         perror("SHM Key could not be created\n");
         return NULL;
     }
-
     int shmid = -1;
     int *shmptr;
     shmid = shmget(shmkey, sizeof(int), PERMS);
@@ -287,7 +302,6 @@ void *DFS(void *arg)
     }
     sem_post(semaphore_read[index]);
 
-
     // create adjecency list
     int **adjList = (int **)malloc((MAX_GRAPH_NODES + 1) * sizeof(int *));
     for (int i = 0; i < MAX_GRAPH_NODES + 1; i++)
@@ -317,15 +331,21 @@ void *DFS(void *arg)
     {
         vis[i] = 0;
     }
+    pthread_mutex_t lock;
+    pthread_mutex_init(&lock,NULL);
+    TraverseArgs *traverseArgs = initializeTraverseArgs(starting_node, vis, adjList, response, n, NULL, &lock);
 
-    TraverseArgs *traverseArgs =initializeTraverseArgs(starting_node,vis,adjList,response,n,NULL,NULL);
-
-    //start DFS
+    // start DFS
     pthread_t tid;
-    pthread_create(&tid, NULL, DFShelper, (void *)traverseArgs);
+    int res = pthread_create(&tid, NULL, DFShelper, (void *)traverseArgs);
+    if (res != 0)
+    {
+        printf("Error occured in thread creation");
+        return NULL;
+    }
     pthread_join(tid, NULL);
 
-    //send result of DFS to client at 1000*sequence_number
+    // send result of DFS to client at 1000*sequence_number
     struct message buf;
     strcpy(buf.mtext, response);
     buf.sequence_number = args->unique_id;
@@ -333,14 +353,16 @@ void *DFS(void *arg)
     if (msgsnd(msqid, &buf, sizeof(buf.mtext), 0) == -1)
     {
         printf("Server has terminated or error in sending message");
+        return NULL;
     }
-    printf("Response sent to %d\n\n",args->sequence_number);
+    printf("Response sent to %d\n\n", args->sequence_number);
+    pthread_mutex_destroy(&lock);
     pthread_exit(NULL);
 }
 
 void *BFShelper(void *arg)
 {
-    //extract argument to thread
+    // extract argument to thread
     TraverseArgs *traverseArgs = (TraverseArgs *)arg;
     int n = traverseArgs->n;
     int currentNode = traverseArgs->currentNode;
@@ -349,7 +371,7 @@ void *BFShelper(void *arg)
     Queue *queue = traverseArgs->queue;
     int i = 0;
 
-    //add neighbours to queue
+    // add neighbours to queue
     while (*(*(adjList + currentNode) + i) != -1)
     {
         if (vis[*(*(adjList + currentNode) + i)] == 0)
@@ -367,7 +389,7 @@ void *BFShelper(void *arg)
 void *BFS(void *arg)
 {
 
-    //get arguments and index 
+    // get arguments and index
     thread_arg *args = (thread_arg *)arg;
     int index;
     if (args->filename[2] == '.')
@@ -396,11 +418,16 @@ void *BFS(void *arg)
         return NULL;
     }
 
-    //getting starting node from shared memory
+    // getting starting node from shared memory
     sem_t *shmSemaphore;
     char sem_name[50];
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
     shmSemaphore = sem_open(sem_name, 0, PERMS, 1);
+    if (shmSemaphore == SEM_FAILED)
+    {
+        printf("Error occured in semaphore creation");
+        return NULL;
+    }
     sem_wait(shmSemaphore);
     key_t shmkey;
     if ((shmkey = ftok("client.c", args->sequence_number)) == -1)
@@ -449,7 +476,7 @@ void *BFS(void *arg)
         sem_post(semaphore_write[index]);
     sem_post(semaphore_read[index]);
 
-    //making adjecency list
+    // making adjecency list
     int **adjList = (int **)malloc((MAX_GRAPH_NODES + 1) * sizeof(int *));
     for (int i = 0; i < MAX_GRAPH_NODES + 1; i++)
     {
@@ -493,8 +520,13 @@ void *BFS(void *arg)
             vis[node] = 1;
             sprintf(res, "%d ", node + 1);
             strcat(breadth_first_traversal, res);
-            TraverseArgs *temp = initializeTraverseArgs(node,vis,adjList,NULL,n,queue,&lock);
-            pthread_create(&threads[itr], NULL, BFShelper, (void *)temp);
+            TraverseArgs *temp = initializeTraverseArgs(node, vis, adjList, NULL, n, queue, &lock);
+            int res = pthread_create(&threads[itr], NULL, BFShelper, (void *)temp);
+            if (res != 0)
+            {
+                printf("Error occured in thread creation");
+                return NULL;
+            }
             itr++;
         }
         for (int i = 0; i < itr; i++)
@@ -518,7 +550,15 @@ void *BFS(void *arg)
 
 int main(int argc, char const *argv[])
 {
-    //connect to SHM for reader count between processes
+    char sem_name[50];
+    for (int i = 0; i < 21; i++)
+    {
+        sprintf(sem_name, "__writerSemaphore__%d__", i);
+        sem_unlink(sem_name);
+        sprintf(sem_name, "__readerSemaphore__%d__", i);
+        sem_unlink(sem_name);
+    }
+    // connect to SHM for reader count between processes
     if ((readerKey = ftok("secondary_server.c", 12345)) == -1)
     {
         perror("SHM Key could not be created\n");
@@ -539,17 +579,26 @@ int main(int argc, char const *argv[])
         return 1;
     }
 
-    char sem_name[50];
     for (int i = 0; i < 21; i++)
     {
         sprintf(sem_name, "__writerSemaphore__%d__", i);
         semaphore_write[i] = sem_open(sem_name, O_CREAT, PERMS, 1); // 0x0100 means create if doesnt exist already
+        if (semaphore_write[i] == SEM_FAILED)
+        {
+            printf("Error occured in semaphore creation");
+            return 1;
+        }
     }
 
     for (int i = 0; i < 21; i++)
     {
         sprintf(sem_name, "__readerSemaphore__%d__", i);
         semaphore_read[i] = sem_open(sem_name, O_CREAT, PERMS, 1); // 0x0100 means create if doesnt exist already
+        if (semaphore_read[i] == SEM_FAILED)
+        {
+            printf("Error occured in semaphore creation");
+            return 1;
+        }
     }
 
     struct message buf;
@@ -558,13 +607,15 @@ int main(int argc, char const *argv[])
     // decide how to make it odd even
     int parity;
     printf("If server is ODD then enter 1\nIf server is EVEN enter 2:\n");
-    scanf("%d",&parity);
-    int recieveChannel = (parity==1) ? SECONDARY_SERVER_1_CODE : SECONDARY_SERVER_2_CODE;\
+    scanf("%d", &parity);
+    int recieveChannel = (parity == 1) ? SECONDARY_SERVER_1_CODE : SECONDARY_SERVER_2_CODE;
 
-    if(parity==1){
+    if (parity == 1)
+    {
         printf("This is ODD server\n\n");
-
-    }else printf("This is EVEN server\n\n");
+    }
+    else
+        printf("This is EVEN server\n\n");
     if ((key = ftok("load_balancer.c", 'W')) == -1)
     {
         perror("ftok");
@@ -580,16 +631,16 @@ int main(int argc, char const *argv[])
 
     while (1)
     {
-        //recieve messages from queue
+        // recieve messages from queue
         if (msgrcv(msqid, &buf, sizeof(buf.mtext), recieveChannel, 0) == -1)
         {
             perror("msgrcv error");
             exit(1);
         }
-        //CLEANUP condition
+        // CLEANUP condition
         if (buf.operation_number == -1)
             break;
-   
+
         int operation = buf.operation_number % 10;
         int sequence_number = buf.operation_number / 10;
         thread_arg *args = malloc(sizeof(thread_arg));
@@ -597,10 +648,16 @@ int main(int argc, char const *argv[])
         args->sequence_number = sequence_number;
         args->unique_id = 1000 * sequence_number;
         pthread_attr_init(&attr[tidptr]);
+        int res;
         if (operation == 3)
-            pthread_create(&tid[tidptr], &attr[tidptr], DFS, (void *)args);
+            res = pthread_create(&tid[tidptr], &attr[tidptr], DFS, (void *)args);
         else if (operation == 4)
-            pthread_create(&tid[tidptr], &attr[tidptr], BFS, (void *)args);
+            res = pthread_create(&tid[tidptr], &attr[tidptr], BFS, (void *)args);
+        if (res != 0)
+        {
+            printf("Error occured in thread creation");
+            continue;
+        }
         tidptr++;
     }
 
@@ -623,12 +680,24 @@ int main(int argc, char const *argv[])
     }
     for (int i = 0; i < 21; i++)
     {
-        sem_close(semaphore_write[i]);
-        sem_close(semaphore_read[i]);
+        if (sem_close(semaphore_write[i]) == -1)
+        {
+            printf("Error in closing semaphore_write %d", i);
+        }
+        if (sem_close(semaphore_read[i]) == -1)
+        {
+            printf("Error in closing semaphore_read %d", i);
+        }
         sprintf(sem_name, "__writerSemaphore__%d__", i);
-        sem_unlink(sem_name);
+        if (sem_unlink(sem_name) == -1)
+        {
+            printf("Error occured in unlinking %s", sem_name);
+        }
         sprintf(sem_name, "__readerSemaphore__%d__", i);
-        sem_unlink(sem_name);
+        if (sem_unlink(sem_name) == -1)
+        {
+            printf("Error occured in unlinking %s", sem_name);
+        }
     }
 
     return 0;

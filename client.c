@@ -63,7 +63,6 @@ int main(int argc, char const *argv[])
             continue;
         }
         len = strlen(buf.mtext);
-        // len = sprintf(buf.mtext,"this is an issue");
         printf("%s\n", buf.mtext);
         if (buf.mtext[len - 1] == '\n')
             buf.mtext[len - 1] = '\0';
@@ -83,7 +82,14 @@ int main(int argc, char const *argv[])
             sem_t *shmSemaphore;
             char sem_name[50];
             sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
             shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            if (shmSemaphore == SEM_FAILED)
+            {
+                printf("Error occured in semaphore creation");
+                continue;
+                
+            }
             // take input for graph
             sem_wait(shmSemaphore);
             key_t shmkey;
@@ -150,7 +156,7 @@ int main(int argc, char const *argv[])
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("Response from server: \n%s\n\n", buf.mtext);
+            printf("\nResponse from server: \n%s\n\n", buf.mtext);
             // delete shared memory segment after recieving response
 
             if (shmdt(shmptr) == -1)
@@ -174,7 +180,14 @@ int main(int argc, char const *argv[])
             sem_t *shmSemaphore;
             char sem_name[50];
             sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
             shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            if (shmSemaphore == SEM_FAILED)
+            {
+                printf("Error occured in semaphore creation");
+                continue;
+                
+            }
             sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
@@ -242,7 +255,7 @@ int main(int argc, char const *argv[])
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("Response from server: \n%s\n\n", buf.mtext);
+            printf("\nResponse from server: \n%s\n\n", buf.mtext);
             // delete shared memory segment after recieving response
 
             if (shmdt(shmptr) == -1)
@@ -266,7 +279,15 @@ int main(int argc, char const *argv[])
             sem_t *shmSemaphore;
             char sem_name[50];
             sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
+            sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
             shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            if (shmSemaphore == SEM_FAILED)
+            {
+                printf("Error occured in semaphore creation");
+                continue;
+                
+            }
             sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
@@ -304,7 +325,7 @@ int main(int argc, char const *argv[])
                 exit(1);
             }
 
-            printf("Response from server: \n%s\n\n", buf.mtext);
+            printf("\nResponse from server: \n%s\n\n", buf.mtext);
 
             if (shmdt(shmptr) == -1)
             {
@@ -328,7 +349,14 @@ int main(int argc, char const *argv[])
             sem_t *shmSemaphore;
             char sem_name[50];
             sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
+            sem_unlink(sem_name);
             shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            if (shmSemaphore == SEM_FAILED)
+            {
+                printf("Error occured in semaphore creation");
+                continue;
+                
+            }
             sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
@@ -364,7 +392,7 @@ int main(int argc, char const *argv[])
                 perror("msgrcv error");
                 exit(1);
             }
-            printf("Response from server: \n%s\n\n", buf.mtext);
+            printf("\nResponse from server: \n%s\n\n", buf.mtext);
 
             if (shmdt(shmptr) == -1)
             {

@@ -158,8 +158,13 @@ void *writeToGraphDB(void *arg)
 }
 int main(int argc, char const *argv[])
 {
+    char sem_name[50];
     struct message buf;
-
+    for (int i = 0; i < 21; i++)
+    {
+        sprintf(sem_name, "__writerSemaphore__%d__", i);
+        sem_unlink(sem_name); // 0x0100 means create if doesnt exist already
+    }
     if ((key = ftok("load_balancer.c", 'W')) == -1)
     {
         perror("ftok");
@@ -173,11 +178,15 @@ int main(int argc, char const *argv[])
         exit(1);
     }
 
-    char sem_name[50];
     for (int i = 0; i < 21; i++)
     {
         sprintf(sem_name, "__writerSemaphore__%d__", i);
         semaphore_write[i] = sem_open(sem_name, O_CREAT, PERMS, 1); // 0x0100 means create if doesnt exist already
+        if (semaphore_write[i] == SEM_FAILED)
+        {
+            printf("Error occured in semaphore creation");
+            return 1;
+        }
     }
 
     while (1)
@@ -201,7 +210,11 @@ int main(int argc, char const *argv[])
         args->sequence_number = sequence_number;
         args->option = operation;
         pthread_attr_init(&attr[tidptr]);
-        pthread_create(&tid[tidptr], &attr[tidptr], writeToGraphDB, (void *)args);
+        int res = pthread_create(&tid[tidptr], &attr[tidptr], writeToGraphDB, (void *)args);
+        if(res!=0){
+            printf("Error occured in thread creation");
+            continue;
+        }
         tidptr++;
     }
 
@@ -212,9 +225,15 @@ int main(int argc, char const *argv[])
     }
     for (int i = 0; i < 21; i++)
     {
-        sem_close(semaphore_write[i]);
+         if (sem_close(semaphore_write[i]) == -1)
+        {
+            printf("Error in closing semaphore_write %d", i);
+        }
         sprintf(sem_name, "__writerSemaphore__%d__", i);
-        sem_unlink(sem_name); // 0x0100 means create if doesnt exist already
+         if (sem_unlink(sem_name) == -1)
+        {
+            printf("Error occured in unlinking %s", sem_name);
+        }
     }
     
     return 0;
