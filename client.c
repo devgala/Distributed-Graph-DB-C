@@ -83,7 +83,7 @@ int main(int argc, char const *argv[])
             char sem_name[50];
             sprintf(sem_name, "___clientSemaphore%d___", sequence_number);
             sem_unlink(sem_name);
-            shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 1);
+            shmSemaphore = sem_open(sem_name, O_CREAT, PERMS, 0);
             if (shmSemaphore == SEM_FAILED)
             {
                 printf("Error occured in semaphore creation");
@@ -91,7 +91,6 @@ int main(int argc, char const *argv[])
                 
             }
             // take input for graph
-            sem_wait(shmSemaphore);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
             {
@@ -127,6 +126,8 @@ int main(int argc, char const *argv[])
                     scanf("%d", &adj[i][j]);
                 }
             }
+
+            
             shmptr[0] = n;
             for (int i = 1; i <= n; i++)
             {
