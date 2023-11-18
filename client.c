@@ -356,8 +356,6 @@ int main(int argc, char const *argv[])
                 continue;
                 
             }
-
-            sleep(10);
             key_t shmkey;
             if ((shmkey = ftok("client.c", sequence_number)) == -1)
             {
