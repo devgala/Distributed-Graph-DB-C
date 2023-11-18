@@ -69,7 +69,6 @@ void *writeToGraphDB(void *arg)
         sem_post(semaphore_write[index]);
         return NULL;
     }
-    // sleep(20);
 
     // connct to shared memory of client
     sem_t *shmSemaphore;
@@ -78,7 +77,6 @@ void *writeToGraphDB(void *arg)
     shmSemaphore = sem_open(sem_name, 0, PERMS, 0);
 
     sem_wait(shmSemaphore);
-    printf("THis\n");
     key_t shmkey;
     if ((shmkey = ftok("client.c", args->sequence_number)) == -1)
     {

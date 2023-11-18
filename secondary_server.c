@@ -244,7 +244,7 @@ void *DFS(void *arg)
     sem_t *shmSemaphore;
     char sem_name[50];
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
-    shmSemaphore = sem_open(sem_name, 0, PERMS, 1);
+    shmSemaphore = sem_open(sem_name, 0, PERMS, 0);
     if (shmSemaphore == SEM_FAILED)
     {
         printf("Error occured in semaphore creation");
@@ -422,13 +422,14 @@ void *BFS(void *arg)
     sem_t *shmSemaphore;
     char sem_name[50];
     sprintf(sem_name, "___clientSemaphore%d___", args->sequence_number);
-    shmSemaphore = sem_open(sem_name, 0, PERMS, 1);
+    shmSemaphore = sem_open(sem_name, 0, PERMS, 0);
     if (shmSemaphore == SEM_FAILED)
     {
         printf("Error occured in semaphore creation");
         return NULL;
     }
     sem_wait(shmSemaphore);
+    printf("after\n");
     key_t shmkey;
     if ((shmkey = ftok("client.c", args->sequence_number)) == -1)
     {
